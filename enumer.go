@@ -39,7 +39,7 @@ func (i %[1]s) IsA%[1]s() bool {
 //	[1]: type name
 const stringBelongsMethodSet = `// IsA%[1]s returns "true" if the value is listed in the enum definition. "false" otherwise
 func (i %[1]s) IsA%[1]s() bool {
-	_, ok := _%[1]sMap[i] 
+	_, ok := _%[1]sMap[i]
 	return ok
 }
 `
@@ -79,11 +79,24 @@ func (g *Generator) buildBasicExtras(runs [][]Value, typeName string, runsThresh
 	// Print the basic extra methods
 	g.Printf(stringNameToValueMethod, typeName)
 	g.Printf(stringValuesMethod, typeName)
+
 	if len(runs) <= runsThreshold {
 		g.Printf(stringBelongsMethodLoop, typeName)
 	} else { // There is a map of values, the code is simpler then
 		g.Printf(stringBelongsMethodSet, typeName)
 	}
+}
+
+// Arguments to format are:
+//	[1]: type name
+const enumValuesMethod = `// EnumValues returns an array of the values of this type
+func (i %[1]s) EnumValues() []%[1]s {
+	return _%[1]sValues
+}
+`
+
+func (g *Generator) buildEnumValues(runs [][]Value, typeName string, runsThreshold int) {
+	g.Printf(enumValuesMethod, typeName)
 }
 
 // Arguments to format are:

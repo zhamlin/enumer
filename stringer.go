@@ -20,13 +20,14 @@ import (
 	"go/importer"
 	"go/token"
 	"go/types"
-	"golang.org/x/tools/go/packages"
 	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"golang.org/x/tools/go/packages"
 
 	"github.com/pascaldekloe/name"
 )
@@ -52,6 +53,7 @@ var (
 	transformMethod = flag.String("transform", "noop", "enum item name transformation method. Default: noop")
 	trimPrefix      = flag.String("trimprefix", "", "transform each item name by removing a prefix. Default: \"\"")
 	lineComment     = flag.Bool("linecomment", false, "use line comment text as printed text when present")
+	enumValues      = flag.Bool("includeValues", false, "include a method on the enumn type to list all values")
 )
 
 var comments arrayFlags
@@ -121,7 +123,7 @@ func main() {
 
 	// Run generate for each type.
 	for _, typeName := range types {
-		g.generate(typeName, *json, *yaml, *sql, *text, *transformMethod, *trimPrefix, *lineComment)
+		g.generate(typeName, *json, *yaml, *sql, *text, *transformMethod, *trimPrefix, *lineComment, *enumValues)
 	}
 
 	// Format the output.
@@ -341,7 +343,7 @@ func (g *Generator) replaceValuesWithLineComment(values []Value) {
 }
 
 // generate produces the String method for the named type.
-func (g *Generator) generate(typeName string, includeJSON, includeYAML, includeSQL, includeText bool, transformMethod string, trimPrefix string, lineComment bool) {
+func (g *Generator) generate(typeName string, includeJSON, includeYAML, includeSQL, includeText bool, transformMethod string, trimPrefix string, lineComment, includeValues bool) {
 	values := make([]Value, 0, 100)
 	for _, file := range g.pkg.files {
 		// Set the state for this run of the walker.
@@ -389,6 +391,9 @@ func (g *Generator) generate(typeName string, includeJSON, includeYAML, includeS
 	}
 
 	g.buildBasicExtras(runs, typeName, runsThreshold)
+	if includeValues {
+		g.buildEnumValues(runs, typeName, runsThreshold)
+	}
 	if includeJSON {
 		g.buildJSONMethods(runs, typeName, runsThreshold)
 	}
