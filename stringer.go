@@ -46,6 +46,7 @@ func (af *arrayFlags) Set(value string) error {
 var (
 	typeNames       = flag.String("type", "", "comma-separated list of type names; must be set")
 	sql             = flag.Bool("sql", false, "if true, the Scanner and Valuer interface will be implemented.")
+	sqlInt          = flag.Bool("sql-int", false, "if true, the Scanner and Valuer interface will be implemented, using int instead of string.")
 	json            = flag.Bool("json", false, "if true, json marshaling methods will be generated. Default: false")
 	yaml            = flag.Bool("yaml", false, "if true, yaml marshaling methods will be generated. Default: false")
 	text            = flag.Bool("text", false, "if true, text marshaling methods will be generated. Default: false")
@@ -116,6 +117,10 @@ func main() {
 	if *sql {
 		g.Printf("\t\"database/sql/driver\"\n")
 	}
+	if *sqlInt {
+		g.Printf("\t\"database/sql/driver\"\n")
+		g.Printf("\t\"strconv\"\n")
+	}
 	if *json {
 		g.Printf("\t\"encoding/json\"\n")
 	}
@@ -123,7 +128,7 @@ func main() {
 
 	// Run generate for each type.
 	for _, typeName := range types {
-		g.generate(typeName, *json, *yaml, *sql, *text, *transformMethod, *trimPrefix, *lineComment, *enumValues)
+		g.generate(typeName, *json, *yaml, *sql, *sqlInt, *text, *transformMethod, *trimPrefix, *lineComment, *enumValues)
 	}
 
 	// Format the output.
@@ -343,7 +348,7 @@ func (g *Generator) replaceValuesWithLineComment(values []Value) {
 }
 
 // generate produces the String method for the named type.
-func (g *Generator) generate(typeName string, includeJSON, includeYAML, includeSQL, includeText bool, transformMethod string, trimPrefix string, lineComment, includeValues bool) {
+func (g *Generator) generate(typeName string, includeJSON, includeYAML, includeSQL, includeSQLInt, includeText bool, transformMethod string, trimPrefix string, lineComment, includeValues bool) {
 	values := make([]Value, 0, 100)
 	for _, file := range g.pkg.files {
 		// Set the state for this run of the walker.
@@ -405,6 +410,9 @@ func (g *Generator) generate(typeName string, includeJSON, includeYAML, includeS
 	}
 	if includeSQL {
 		g.addValueAndScanMethod(typeName)
+	}
+	if includeSQLInt {
+		g.addIntValueAndScanMethod(typeName)
 	}
 }
 
