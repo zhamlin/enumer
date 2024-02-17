@@ -10,7 +10,6 @@
 package main
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1142,7 +1141,7 @@ func runGoldenTest(t *testing.T, test Golden, generateJSON, generateYAML, genera
 	input := "package test\n" + test.input
 	file := test.name + ".go"
 
-	dir, err := ioutil.TempDir("", "stringer")
+	dir, err := os.MkdirTemp("", "stringer")
 	if err != nil {
 		t.Error(err)
 	}
@@ -1154,7 +1153,7 @@ func runGoldenTest(t *testing.T, test Golden, generateJSON, generateYAML, genera
 	}()
 
 	absFile := filepath.Join(dir, file)
-	err = ioutil.WriteFile(absFile, []byte(input), 0644)
+	err = os.WriteFile(absFile, []byte(input), 0644)
 	if err != nil {
 		t.Error(err)
 	}
