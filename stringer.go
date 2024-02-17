@@ -20,7 +20,6 @@ import (
 	"go/importer"
 	"go/token"
 	"go/types"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -143,7 +142,7 @@ func main() {
 
 	// Write to tmpfile first
 	tmpName := fmt.Sprintf("%s_enumer_", filepath.Base(types[0]))
-	tmpFile, err := ioutil.TempFile(filepath.Dir(types[0]), tmpName)
+	tmpFile, err := os.CreateTemp(filepath.Dir(types[0]), tmpName)
 	if err != nil {
 		log.Fatalf("creating temporary file for output: %s", err)
 	}
