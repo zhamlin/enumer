@@ -2,16 +2,16 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// +build go1.5
-
-//Enumer is a tool to generate Go code that adds useful methods to Go enums (constants with a specific type).
-//It started as a fork of Rob Pike’s Stringer tool
+// Enumer is a tool to generate Go code that adds useful methods to Go enums (constants with a specific type).
+// It started as a fork of Rob Pike’s Stringer tool
 //
-//Please visit http://github.com/alvaroloes/enumer for a comprehensive documentation
+// Please visit http://github.com/alvaroloes/enumer for a comprehensive documentation
 package main
 
 import (
 	"bytes"
+	"embed"
+	"errors"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -20,8 +20,10 @@ import (
 	"go/importer"
 	"go/token"
 	"go/types"
+	"io/fs"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -29,6 +31,8 @@ import (
 	"golang.org/x/tools/go/packages"
 
 	"github.com/pascaldekloe/name"
+
+	_ "embed"
 )
 
 type arrayFlags []string
@@ -44,16 +48,10 @@ func (af *arrayFlags) Set(value string) error {
 
 var (
 	typeNames       = flag.String("type", "", "comma-separated list of type names; must be set")
-	sql             = flag.Bool("sql", false, "if true, the Scanner and Valuer interface will be implemented.")
-	sqlInt          = flag.Bool("sql-int", false, "if true, the Scanner and Valuer interface will be implemented, using int instead of string.")
-	json            = flag.Bool("json", false, "if true, json marshaling methods will be generated. Default: false")
-	yaml            = flag.Bool("yaml", false, "if true, yaml marshaling methods will be generated. Default: false")
-	text            = flag.Bool("text", false, "if true, text marshaling methods will be generated. Default: false")
 	output          = flag.String("output", "", "output file name; default srcdir/<type>_enumer.go")
 	transformMethod = flag.String("transform", "noop", "enum item name transformation method. Default: noop")
 	trimPrefix      = flag.String("trimprefix", "", "transform each item name by removing a prefix. Default: \"\"")
 	lineComment     = flag.Bool("linecomment", false, "use line comment text as printed text when present")
-	enumValues      = flag.Bool("includeValues", false, "include a method on the enumn type to list all values")
 )
 
 var comments arrayFlags
@@ -67,22 +65,96 @@ func Usage() {
 	fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "\tenumer [flags] -type T [directory]\n")
 	fmt.Fprintf(os.Stderr, "\tenumer [flags] -type T files... # Must be a single package\n")
+	fmt.Fprintf(os.Stderr, "\tenumer dump directory/ # Writes templates to directory \n")
 	fmt.Fprintf(os.Stderr, "For more information, see:\n")
-	fmt.Fprintf(os.Stderr, "\thttps://github.com/alvaroloes/enumer\n")
+	fmt.Fprintf(os.Stderr, "\thttps://github.com/zhamlin/enumer\n")
 	fmt.Fprintf(os.Stderr, "Flags:\n")
 	flag.PrintDefaults()
 }
 
+//go:embed templates/*
+var templatesFS embed.FS
+
+func loadTemplates() []Template {
+	var templates fs.FS = templatesFS
+	path := "templates/*.tmpl"
+
+	if d := os.Getenv("ENUMER_TEMPLATES"); d != "" {
+		templates = os.DirFS(d)
+		path = "*.tmpl"
+	}
+
+	matches, err := fs.Glob(templates, path)
+	if err != nil {
+		log.Fatalf("error getting templates: %s", err)
+	}
+
+	sort.Strings(matches)
+	results := make([]Template, len(matches))
+	for i, match := range matches {
+		data, err := fs.ReadFile(templates, match)
+		if err != nil {
+			log.Fatalf("error reading template: %s: %s", match, err)
+		}
+		tmpl, err := NewTemplate(match, string(data))
+		if err != nil {
+			log.Fatalf("error reading template: %s: %s", match, err)
+		}
+		results[i] = tmpl
+	}
+
+	return results
+}
+
+func dumpTemplates(dest string) {
+	matches, err := fs.Glob(templatesFS, "templates/*.tmpl")
+	if err != nil {
+		log.Fatalf("error getting templates: %s", err)
+	}
+
+	for _, match := range matches {
+		_, name := path.Split(match)
+		p := path.Join(dest, name)
+
+		data, err := fs.ReadFile(templatesFS, match)
+		if err != nil {
+			log.Fatalf("error reading template: %s: %s", match, err)
+		}
+
+		if _, err := os.Stat(p); !errors.Is(err, os.ErrNotExist) {
+			// do not override an existing template
+			continue
+		}
+
+		if err := os.WriteFile(p, data, 0644); err != nil {
+			log.Fatalf("error writing template: %s: %s", p, err)
+		}
+	}
+}
+
+type TemplateFlag struct {
+	Template
+	Value *bool
+}
+
 func main() {
+	templates := loadTemplates()
+	templateFlags := make([]TemplateFlag, len(templates))
+
+	for i, t := range templates {
+		n := t.Config.FlagName
+		v := flag.Bool(n, false, t.Config.Usage)
+
+		templateFlags[i] = TemplateFlag{
+			Template: t,
+			Value:    v,
+		}
+	}
+
 	log.SetFlags(0)
 	log.SetPrefix("enumer: ")
 	flag.Usage = Usage
 	flag.Parse()
-	if len(*typeNames) == 0 {
-		flag.Usage()
-		os.Exit(2)
-	}
-	types := strings.Split(*typeNames, ",")
 
 	// We accept either one directory or a list of files. Which do we have?
 	args := flag.Args()
@@ -90,6 +162,20 @@ func main() {
 		// Default: process whole package in current directory.
 		args = []string{"."}
 	}
+
+	if args[0] == "dump" {
+		if len(args) < 2 {
+			log.Fatal("missing required directory for dump")
+		}
+		dumpTemplates(args[1])
+		return
+	}
+
+	if len(*typeNames) == 0 {
+		flag.Usage()
+		os.Exit(2)
+	}
+	types := strings.Split(*typeNames, ",")
 
 	// Parse the package once.
 	var (
@@ -113,21 +199,20 @@ func main() {
 	g.Printf("\n")
 	g.Printf("import (\n")
 	g.Printf("\t\"fmt\"\n")
-	if *sql {
-		g.Printf("\t\"database/sql/driver\"\n")
+
+	for _, f := range templateFlags {
+		if *f.Value {
+			for _, i := range f.Config.Imports {
+				g.Printf("\t%q\n", i)
+			}
+		}
 	}
-	if *sqlInt {
-		g.Printf("\t\"database/sql/driver\"\n")
-		g.Printf("\t\"strconv\"\n")
-	}
-	if *json {
-		g.Printf("\t\"encoding/json\"\n")
-	}
+
 	g.Printf(")\n")
 
 	// Run generate for each type.
 	for _, typeName := range types {
-		g.generate(typeName, *json, *yaml, *sql, *sqlInt, *text, *transformMethod, *trimPrefix, *lineComment, *enumValues)
+		g.generate(typeName, *transformMethod, *trimPrefix, *lineComment, templateFlags)
 	}
 
 	// Format the output.
@@ -187,8 +272,9 @@ type File struct {
 	pkg  *Package  // Package to which this file belongs.
 	file *ast.File // Parsed AST.
 	// These fields are reset for each type being generated.
-	typeName string  // Name of the constant type.
-	values   []Value // Accumulator for constant values of that type.
+	typeName    string  // Name of the constant type.
+	typeComment string  // Comment on the constant type.
+	values      []Value // Accumulator for constant values of that type.
 }
 
 // Package holds information about a Go package
@@ -347,15 +433,27 @@ func (g *Generator) replaceValuesWithLineComment(values []Value) {
 }
 
 // generate produces the String method for the named type.
-func (g *Generator) generate(typeName string, includeJSON, includeYAML, includeSQL, includeSQLInt, includeText bool, transformMethod string, trimPrefix string, lineComment, includeValues bool) {
+func (g *Generator) generate(
+	typeName string,
+	transformMethod string,
+	trimPrefix string,
+	lineComment bool,
+	templates []TemplateFlag,
+) {
 	values := make([]Value, 0, 100)
+	typeComment := ""
 	for _, file := range g.pkg.files {
 		// Set the state for this run of the walker.
 		file.typeName = typeName
 		file.values = nil
+		file.typeComment = ""
 		if file.file != nil {
 			ast.Inspect(file.file, file.genDecl)
 			values = append(values, file.values...)
+
+			if c := file.typeComment; c != "" {
+				typeComment = c
+			}
 		}
 	}
 
@@ -395,23 +493,21 @@ func (g *Generator) generate(typeName string, includeJSON, includeYAML, includeS
 	}
 
 	g.buildBasicExtras(runs, typeName, runsThreshold)
-	if includeValues {
-		g.buildEnumValues(runs, typeName, runsThreshold)
+
+	d := map[string]any{
+		"Type": TemplateType{
+			Name:    typeName,
+			Comment: typeComment,
+		},
+		"Values": values,
 	}
-	if includeJSON {
-		g.buildJSONMethods(runs, typeName, runsThreshold)
-	}
-	if includeText {
-		g.buildTextMethods(runs, typeName, runsThreshold)
-	}
-	if includeYAML {
-		g.buildYAMLMethods(runs, typeName, runsThreshold)
-	}
-	if includeSQL {
-		g.addValueAndScanMethod(typeName)
-	}
-	if includeSQLInt {
-		g.addIntValueAndScanMethod(typeName)
+	for _, t := range templates {
+		if *t.Value {
+			err := t.Execute(&g.buf, d)
+			if err != nil {
+				panic(err)
+			}
+		}
 	}
 }
 
@@ -495,7 +591,29 @@ func (b byValue) Less(i, j int) bool {
 // genDecl processes one declaration clause.
 func (f *File) genDecl(node ast.Node) bool {
 	decl, ok := node.(*ast.GenDecl)
-	if !ok || decl.Tok != token.CONST {
+	if !ok {
+		return true
+	}
+
+	if decl.Tok == token.TYPE {
+		for _, spec := range decl.Specs {
+			vspec := spec.(*ast.TypeSpec) // Guaranteed to succeed as this is TYPE.
+			_, ok := vspec.Type.(*ast.Ident)
+			if !ok {
+				continue
+			}
+
+			if f.typeName != vspec.Name.Name {
+				continue
+			}
+
+			if c := decl.Doc; c != nil {
+				f.typeComment = strings.TrimSpace(c.Text())
+			}
+		}
+	}
+
+	if decl.Tok != token.CONST {
 		// We only care about const declarations.
 		return true
 	}
@@ -521,6 +639,7 @@ func (f *File) genDecl(node ast.Node) bool {
 				continue
 			}
 			typ = ident.Name
+
 		}
 		if typ != f.typeName {
 			// This is not the type we're looking for.
@@ -670,6 +789,7 @@ func (g *Generator) buildOneRun(runs [][]Value, typeName string) {
 }
 
 // Arguments to format are:
+//
 //	[1]: type name
 //	[2]: size of index element (8 for uint8 etc.)
 //	[3]: less than zero check (for signed types)

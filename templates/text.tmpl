@@ -1,0 +1,16 @@
+{
+     "flag": "text"
+    ,"usage": "if true, text marshaling methods will be generated. Default: false"
+}
+
+// MarshalText implements the encoding.TextMarshaler interface for {{ .Type.Name }}
+func (i {{ .Type.Name }}) MarshalText() ([]byte, error) {
+	return []byte(i.String()), nil
+}
+
+// UnmarshalText implements the encoding.TextUnmarshaler interface for {{ .Type.Name }}
+func (i *{{ .Type.Name }}) UnmarshalText(text []byte) error {
+	var err error
+	*i, err = {{ .Type.Name }}String(string(text))
+	return err
+}

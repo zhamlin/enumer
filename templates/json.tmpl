@@ -1,0 +1,24 @@
+{
+     "flag": "json"
+    ,"usage": "if true, json marshaling methods will be generated. Default: false"
+    ,"imports": [
+         "encoding/json"
+    ]
+}
+
+// MarshalJSON implements the json.Marshaler interface for {{ .Type.Name }}
+func (i {{ .Type.Name }}) MarshalJSON() ([]byte, error) {
+	return json.Marshal(i.String())
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface for {{ .Type.Name }}
+func (i *{{ .Type.Name }}) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return fmt.Errorf("{{ .Type.Name }} should be a string, got %s", data)
+	}
+
+	var err error
+	*i, err = {{ .Type.Name }}String(s)
+	return err
+}

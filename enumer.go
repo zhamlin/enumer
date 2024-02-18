@@ -3,6 +3,7 @@ package main
 import "fmt"
 
 // Arguments to format are:
+//
 //	[1]: type name
 const stringNameToValueMethod = `// %[1]sString retrieves an enum value from the enum constants string name.
 // Throws an error if the param is not part of the enum.
@@ -15,6 +16,7 @@ func %[1]sString(s string) (%[1]s, error) {
 `
 
 // Arguments to format are:
+//
 //	[1]: type name
 const stringValuesMethod = `// %[1]sValues returns all values of the enum
 func %[1]sValues() []%[1]s {
@@ -23,6 +25,7 @@ func %[1]sValues() []%[1]s {
 `
 
 // Arguments to format are:
+//
 //	[1]: type name
 const stringBelongsMethodLoop = `// IsA%[1]s returns "true" if the value is listed in the enum definition. "false" otherwise
 func (i %[1]s) IsA%[1]s() bool {
@@ -36,6 +39,7 @@ func (i %[1]s) IsA%[1]s() bool {
 `
 
 // Arguments to format are:
+//
 //	[1]: type name
 const stringBelongsMethodSet = `// IsA%[1]s returns "true" if the value is listed in the enum definition. "false" otherwise
 func (i %[1]s) IsA%[1]s() bool {
@@ -85,86 +89,4 @@ func (g *Generator) buildBasicExtras(runs [][]Value, typeName string, runsThresh
 	} else { // There is a map of values, the code is simpler then
 		g.Printf(stringBelongsMethodSet, typeName)
 	}
-}
-
-// Arguments to format are:
-//	[1]: type name
-const enumValuesMethod = `// EnumValues returns an array of the values of this type
-func (i %[1]s) EnumValues() []%[1]s {
-	return _%[1]sValues
-}
-`
-
-func (g *Generator) buildEnumValues(runs [][]Value, typeName string, runsThreshold int) {
-	g.Printf(enumValuesMethod, typeName)
-}
-
-// Arguments to format are:
-//	[1]: type name
-const jsonMethods = `
-// MarshalJSON implements the json.Marshaler interface for %[1]s
-func (i %[1]s) MarshalJSON() ([]byte, error) {
-	return json.Marshal(i.String())
-}
-
-// UnmarshalJSON implements the json.Unmarshaler interface for %[1]s
-func (i *%[1]s) UnmarshalJSON(data []byte) error {
-	var s string
-	if err := json.Unmarshal(data, &s); err != nil {
-		return fmt.Errorf("%[1]s should be a string, got %%s", data)
-	}
-
-	var err error
-	*i, err = %[1]sString(s)
-	return err
-}
-`
-
-func (g *Generator) buildJSONMethods(runs [][]Value, typeName string, runsThreshold int) {
-	g.Printf(jsonMethods, typeName)
-}
-
-// Arguments to format are:
-//	[1]: type name
-const textMethods = `
-// MarshalText implements the encoding.TextMarshaler interface for %[1]s
-func (i %[1]s) MarshalText() ([]byte, error) {
-	return []byte(i.String()), nil
-}
-
-// UnmarshalText implements the encoding.TextUnmarshaler interface for %[1]s
-func (i *%[1]s) UnmarshalText(text []byte) error {
-	var err error
-	*i, err = %[1]sString(string(text))
-	return err
-}
-`
-
-func (g *Generator) buildTextMethods(runs [][]Value, typeName string, runsThreshold int) {
-	g.Printf(textMethods, typeName)
-}
-
-// Arguments to format are:
-//	[1]: type name
-const yamlMethods = `
-// MarshalYAML implements a YAML Marshaler for %[1]s
-func (i %[1]s) MarshalYAML() (interface{}, error) {
-	return i.String(), nil
-}
-
-// UnmarshalYAML implements a YAML Unmarshaler for %[1]s
-func (i *%[1]s) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	var s string
-	if err := unmarshal(&s); err != nil {
-		return err
-	}
-
-	var err error
-	*i, err = %[1]sString(s)
-	return err
-}
-`
-
-func (g *Generator) buildYAMLMethods(runs [][]Value, typeName string, runsThreshold int) {
-	g.Printf(yamlMethods, typeName)
 }
