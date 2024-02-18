@@ -1,0 +1,21 @@
+{
+     "flag": "yaml"
+    ,"usage": "if true, yaml marshaling methods will be generated. Default: false"
+}
+
+// MarshalYAML implements a YAML Marshaler for {{ .Type.Name }}
+func (i {{ .Type.Name }}) MarshalYAML() (interface{}, error) {
+	return i.String(), nil
+}
+
+// UnmarshalYAML implements a YAML Unmarshaler for {{ .Type.Name }}
+func (i *{{ .Type.Name }}) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
+
+	var err error
+	*i, err = {{ .Type.Name }}String(s)
+	return err
+}
