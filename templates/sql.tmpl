@@ -1,0 +1,35 @@
+{
+     "flag": "sql"
+    ,"usage": "generate Value and Scan methods"
+    ,"imports": [
+        "database/sql/driver"
+    ]
+}
+
+func (i {{ .Type.Name }}) Value() (driver.Value, error) {
+	return i.String(), nil
+}
+
+func (i *{{ .Type.Name }}) Scan(value interface{}) error {
+	if value == nil {
+		return nil
+	}
+
+	str, ok := value.(string)
+	if !ok {
+		bytes, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("value is not a byte slice")
+		}
+
+		str = string(bytes[:])
+	}
+
+	val, err := {{ .Type.Name }}String(str)
+	if err != nil {
+		return err
+	}
+	
+	*i = val
+	return nil
+}
